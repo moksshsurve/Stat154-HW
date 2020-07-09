@@ -2,7 +2,7 @@
 title: "Stat 154 HW 01"
 author: "Mokssh Surve"
 date: "2/3/2020"
-output: pdf_document
+output: rmarkdown::github_document
 ---
 
 ```{r}

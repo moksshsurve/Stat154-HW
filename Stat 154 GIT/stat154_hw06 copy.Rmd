@@ -2,9 +2,7 @@
 title: "Stat 154 HW 06"
 author: "Mokssh Surve"
 date: "3/17/2020"
-output: 
-  pdf_document:
-    latex_engine: xelatex
+output: rmarkdown::github_document
 
 ---
 
