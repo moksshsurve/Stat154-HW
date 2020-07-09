@@ -1,0 +1,149 @@
+---
+title: "Stat 154 HW9"
+author: "Mokssh Surve"
+date: "4/25/2020"
+output: pdf_document
+---
+
+```{r}
+
+library('ISLR')
+library('rpart')
+library('rpart.plot')
+library('stats')
+library('factoextra')
+
+set.seed(123)
+
+```
+
+
+## Problem 6
+### a)
+```{r}
+
+data("Carseats")
+
+#trimming data set
+data <-  Carseats[, -c(7,10,11)]
+n <- nrow(data)
+
+#creating variable High
+data$High <- rep(9, n)
+data$High[which(data$Sales >= 9)] <- 1
+data$High[which(data$Sales < 9)] <- 0
+data <- data[, -1]
+
+#scaling
+scaled.data <- scale(data[, 1:7])
+data[, 1:7] <- scaled.data
+
+#training/test split - choosing a 60-40 train-test split
+train <- 0.7
+train.indices <- sample(1:n, floor(train * n))
+data.train <- as.data.frame(data[train.indices, ])
+data.test <- as.data.frame(data[-train.indices, ])
+
+
+```
+
+### b)
+```{r}
+
+tree <- rpart(High ~ CompPrice + Income + Advertising + Population + Price + Age + Education, data = data.train, method = 'class', maxdepth=6)
+#plot(tree, margin=0.15, compress = TRUE, uniform = TRUE)
+#text(tree, fancy = TRUE,  use.n = TRUE, all = TRUE, cex=0.75)
+rpart.plot(tree)
+
+confusion_mat <- table(predict(tree, data.test ,type = 'class'), data.test$High)
+selectivity <- (confusion_mat[1,1]) / (confusion_mat[1,1] + confusion_mat[2,1])
+specificity <- (confusion_mat[2,2]) / (confusion_mat[2,2] + confusion_mat[1,2])
+accuracy <- (confusion_mat[1,1] + confusion_mat[2,2]) / sum(confusion_mat)
+
+confusion_mat
+selectivity
+specificity
+accuracy
+
+```
+## c) PCA
+```{r}
+
+pca.data <- Carseats[, -c(1,7,10,11)]
+
+pca <- prcomp(pca.data, scale = TRUE)
+pca.var <- get_pca_var(pca)
+
+pca.train <- as.data.frame(pca$x[train.indices, ])
+pca.train$High <- data$High[train.indices]
+pca.test <- as.data.frame(pca$x[-train.indices, ])
+pca.test$High <- data$High[-train.indices]
+
+pca.tree <- rpart(High ~ PC1+PC2+PC3+PC4+PC5+PC6+PC7, data = pca.train, method = 'class', maxdepth=6)
+#plot(pca.tree, margin=0.15, compress = TRUE, uniform = TRUE)
+#text(pca.tree, fancy = TRUE,  use.n = TRUE, all = TRUE, cex=0.75)
+rpart.plot(pca.tree)
+
+confusion_mat <- table(predict(pca.tree, pca.test ,type = 'class'), pca.test$High)
+selectivity <- (confusion_mat[1,1]) / (confusion_mat[1,1] + confusion_mat[2,1])
+specificity <- (confusion_mat[2,2]) / (confusion_mat[2,2] + confusion_mat[1,2])
+accuracy <- (confusion_mat[1,1] + confusion_mat[2,2]) / sum(confusion_mat)
+
+confusion_mat
+selectivity
+specificity
+accuracy
+
+```
+
+## d) Fist 3 components
+```{r}
+
+pca.tree.trim <- rpart(High ~ PC1+PC2+PC3, data = pca.train, method = 'class', maxdepth=6)
+#plot(pca.tree.trim, margin=0.15, compress = TRUE, uniform = TRUE)
+#text(pca.tree.trim, fancy = TRUE,  use.n = TRUE, all = TRUE, cex=0.75)
+rpart.plot(pca.tree.trim)
+
+confusion_mat <- table(predict(pca.tree.trim, pca.test ,type = 'class'), pca.test$High)
+selectivity <- (confusion_mat[1,1]) / (confusion_mat[1,1] + confusion_mat[2,1])
+specificity <- (confusion_mat[2,2]) / (confusion_mat[2,2] + confusion_mat[1,2])
+accuracy <- (confusion_mat[1,1] + confusion_mat[2,2]) / sum(confusion_mat)
+
+confusion_mat
+selectivity
+specificity
+accuracy
+
+```
+## Q6 e)
+
+In this question, PCA is used to reduce dimensions before tree-based classification is carried out. Although dimension reduction can be thought to reduce consideration on "unimportant" variables that could skew the results from ideality, in this case, the effect is quite counterintuitive - the accuracy rate of the classification decreases after PCA is carried out on the data. \newline
+*Note: Assume 0 to signify the True value for discussion purposes.* \newline
+
+In this data set, the True (or low-sellers or 0) values were more in abundance in both the training set as well as the overall distribution. Thus, the PCA leads to the variables that play a greater role in the True values to be heavily weighted in the first 3 PCs. This translates into the Selectivity/TPR (True Positive Rate) being higher for the PCA'ed data set, and the Specificity/TNR (True Negative Rate) being much lower. The following are the summarised conclusions from this question: \newline
+
+**PROS** \newline
+• Dimension reduction **trims the dataset** and makes further analysis and classification less expensive a process. \newline 
+• Dimension reduction makes **visualising the tree easier** a task. \newline 
+In this setting: \newline 
+Dimension reduction led to the **TPR/Selectivity rate to rise.** \newline
+
+
+
+**CONS** \newline
+• Dimension reduction could lead to a **lack of explanation** of individuals of a certain class that form the minority in the dataset - leading to a higher misclassification rate for the particular class. In this case, the TNR fell by a non-trivial amount post dimension reduction. \newline 
+• Dimension reduction **reduces the interpretability** of the data. \newline 
+• Dimension reduction makes making sense out of the thresholds on the tree branches non-interpretable - as is seen in the tree for part d), **PCA1 < 1.9** for the root to first node means not much in terms of the actual variables like *Price, Advertising, Age, etc.* \newline 
+In this setting: \newline 
+Dimension reduction led to the **TNR/Specificity rate to fall,** This fall was mucher larger than the rise in TPR - leading to the overall accuracy rate to fall as well. This meant the **Misclassification rate rose** after dimension reduction was carried out. \newline
+
+
+
+
+
+
+
+
+
+
+

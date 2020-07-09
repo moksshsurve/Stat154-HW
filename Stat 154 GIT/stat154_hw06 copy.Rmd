@@ -1,0 +1,330 @@
+---
+title: "Stat 154 HW 06"
+author: "Mokssh Surve"
+date: "3/17/2020"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+
+---
+
+```{r}
+
+library('matrixcalc')
+library('ggplot2')
+library('dplyr')
+library('reshape2')
+library('tibble')
+full_data <- read.csv("cars2004.csv")
+full_data <- scale(read.csv("cars2004.csv")[,-1])
+
+```
+
+# 2) Coding PCR
+```{r}
+
+my_pcr <- function(k, X, y) {
+  
+  data <- cbind(y,X)
+  data.svd <- svd(data)
+
+  S <- diag(nrow=k)
+  diag(S) <- data.svd$d[1:k]
+  
+  U <- data.svd$u[, 1:k]
+  
+  #components
+  pc <- U %*% S
+  
+  #loadings
+  loadings <- data.svd$v[, 1:k]
+  
+  #coefficients
+  coef <- matrix.inverse(t(pc) %*% pc) %*% t(pc) %*% y
+  
+  #xcoefficients
+  xcoef <- loadings %*% matrix.inverse(S) %*% t(U[, 1:k]) %*% y
+  
+  #fitted
+  y_hat <- pc %*% coef
+  y_hat
+  
+}
+  
+
+```
+
+
+# 3) PCR using data set cars2004.csv
+```{r}
+
+full_data <- scale(read.csv("cars2004.csv")[,-1])
+full_data_nameless <- as.data.frame(full_data)
+full_data <- cbind(read.csv("cars2004.csv")[,1], full_data_nameless)
+
+#price variable to be predicted
+y <- full_data$price
+#remaining 9 variables
+X <- full_data[, -c(1,2)]
+
+data <- X
+data.svd <- svd(data)
+
+k=9
+S <- diag(nrow=k)
+diag(S) <- data.svd$d[1:k]
+U <- data.svd$u[, 1:k]
+pc <- U %*% S
+loadings <- data.svd$v[, 1:k]
+
+#PC coefficients
+pc_coef <- matrix.inverse(t(pc) %*% pc) %*% t(pc) %*% y
+
+#X coefficients
+x_coef <- loadings %*% matrix.inverse(S) %*% t(U[, 1:k]) %*% y
+
+#Predicted Values
+y_hat <- pc %*% pc_coef
+#Residuals
+res <- y_hat - y
+#MSE of Residuals
+mse_res <- mean(res^2)
+
+
+```
+
+## 3.1) Vector of PCR coefficients (i.e. b)
+```{r}
+pc_coef
+```
+## 3.2) Vector of coefficients in terms of X-predictors (i.e. b∗)
+```{r}
+x_coef
+```
+## 3.3) Compute residuals, and show the first 10 elements (first 10 residual values), as well as the mean squared error of residuals
+```{r}
+res[1:10]
+mse_res
+```
+
+# 4) PCR regularizing effect
+## 4.1)
+```{r}
+
+final_matrix <- matrix(0, nrow=9, ncol=9)
+
+for (k in 1:9){
+  
+  if (k!=1){
+    S <- diag(nrow=k)
+    diag(S) <- data.svd$d[1:k]
+  }
+  else{
+    S <- as.matrix(data.svd$d[1])
+  }
+
+  U <- as.matrix(data.svd$u[, 1:k])
+  pc <- U %*% S
+  loadings <- data.svd$v[, 1:k]
+  
+  #PC coefficients
+  pc_coef <- matrix.inverse(t(pc) %*% pc) %*% t(pc) %*% y
+  #X coefficients
+  x_coef <- loadings %*% matrix.inverse(S) %*% t(U[, 1:k]) %*% y
+
+
+  final_matrix[1:(length(x_coef)), k] <- x_coef
+
+}
+
+colnames(final_matrix) <- c('C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9')
+rownames(final_matrix) <- c('engine', 'cyl', 'hp', 'city_mpg', 'hwy_mpg', 'weight', 'wheel', 'length', 'width')
+final_matrix
+
+```
+
+## 4.2) Path graph of coefficients
+```{r}
+
+final_df <- as.data.frame(t(final_matrix))
+final_df$Components <- 1:9
+
+melted_df <- melt(final_df ,  id.vars = 'Components', variable.name = 'Predictor')
+ggplot(melted_df, aes(Components,value)) + geom_line(aes(colour = Predictor))
+
+
+```
+
+## ***************************** COMMENT ON PATTERN ***************************************
+The X-predictors refer to the coefficients associated with the original predictors. Thus, the coefficient value on the Y axis corresponding to the number of components gives us some information on how prevalent the original predictors are in the PCs being used - since after all the PCs are linear combinations of the original predictors => there is a chained relationshp between the original predictors and the coefficients in the PCR. \newline
+As for the most notable patterns, the coefficients associated with the **hp** and **weight** characteristics of the car **increase** the most as the complexity i.e. the number of PCs used increased increases. \newline
+On the other hand, the values associated with the coefficients of **wheel** and **engine** characteristics **decrease** drastically as the complexity (no. of principal components) increases. \newline
+
+# **Part II) Partial Least Squares Regression (PLSR)**
+
+# 5) Coding PLSR
+```{r}
+
+my_plsr <- function(X, y, k){
+  
+  r <- matrix.rank(X)
+  X_0 <- X
+  y_0 <- y
+  Z <- NULL
+  W <- NULL
+  V <-  NULL
+  
+  
+  for (i in 1:k){
+    
+    w_h <- (t(X_0) %*% y_0) / (t(y_0) %*% y_0)
+    w_h <- w_h / (sqrt(sum(w_h^2)))
+    z_h <- (X_0 %*% w_h) / (t(w_h) %*% w_h)
+    v_h <- (t(X_0) %*% z_h) / (t(z_h) %*% z_h)
+    X_0 <- X_0 - (z_h %*% t(v_h))
+    b_h <- (t(y_0) %*% z_h) / (t(z_h) %*% z_h)
+    y_0 <- y_0 - (b_h %*% z_h)
+    
+    Z <- cbind(Z, z_h)
+    W <- cbind(W, w_h)
+    V <- cbind(V, v_h)
+
+  }
+  
+  W_star <- W %*% matrix.inverse(t(V) %*% W)
+  b_star <- b_h %*% W_star
+
+}  
+
+
+```
+
+
+# 6) PLSR using data set cars2004.csv
+```{r}
+
+full_data <- scale(read.csv("cars2004.csv")[,-1])
+full_data_nameless <- as.data.frame(full_data)
+full_data <- cbind(read.csv("cars2004.csv")[,1], full_data_nameless)
+
+#price variable to be predicted
+y <- as.matrix(full_data$price)
+#remaining 9 variables
+X <- as.matrix(full_data[, -c(1,2)])
+
+  r <- 9
+  X_0 <- X
+  y_0 <- y
+  Z <- NULL
+  W <- NULL
+  V <-  NULL
+  b <- NULL
+  
+  
+  for (i in 1:r){
+    
+    w_h <- as.matrix((t(X_0) %*% y_0) / as.numeric((t(y_0) %*% y_0)))
+    w_h <- as.matrix(w_h / (sqrt(sum(w_h^2))))
+    z_h <- as.matrix((X_0 %*% w_h) / as.numeric((t(w_h) %*% w_h)))
+    v_h <- (t(X_0) %*% z_h) / as.numeric((t(z_h) %*% z_h))
+    X_0 <- X_0 - (z_h %*% t(v_h))
+    b_h <- as.numeric((t(y_0) %*% z_h) / as.numeric((t(z_h) %*% z_h)))
+    y_0 <- y_0 - (b_h * z_h)
+    
+    Z <- cbind(Z, z_h)
+    W <- cbind(W, w_h)
+    V <- cbind(V, v_h)
+    b <- append(b, b_h)
+
+  }
+  
+  W_star <- W %*% matrix.inverse(t(V) %*% W)
+  b_star <- W_star %*% b
+  
+  y_hat <- Z %*% b
+  res <- y_hat - y
+  mse_res <- mean(res^2)
+
+
+
+```
+
+## 6.1) Vector of PLSR coefficients (i.e. b)
+```{r}
+b_h
+```
+
+## 6.2) Vector of coefficients in terms of X-predictors (i.e. b∗)
+```{r}
+b_star
+```
+
+## 6.3) Compute residuals, and show the first 10 elements (first 10 residual values), as well as the mean squared error of residuals
+```{r}
+res[1:10]
+mse_res
+```
+
+
+# 7) PLSR regularizing effect
+## 7.1) Regression Coefficients in terms of X-predictors
+```{r}
+
+
+for (k in 1:9){
+  
+  X_0 <- X
+  y_0 <- y
+  Z <- NULL
+  W <- NULL
+  V <-  NULL
+  b <- NULL
+  
+  for (i in 1:k){
+    
+    w_h <- as.matrix((t(X_0) %*% y_0) / as.numeric((t(y_0) %*% y_0)))
+    w_h <- as.matrix(w_h / (sqrt(sum(w_h^2))))
+    z_h <- as.matrix((X_0 %*% w_h) / as.numeric((t(w_h) %*% w_h)))
+    v_h <- (t(X_0) %*% z_h) / as.numeric((t(z_h) %*% z_h))
+    X_0 <- X_0 - (z_h %*% t(v_h))
+    b_h <- as.numeric((t(y_0) %*% z_h) / as.numeric((t(z_h) %*% z_h)))
+    y_0 <- y_0 - (b_h * z_h)
+    
+    Z <- cbind(Z, z_h)
+    W <- cbind(W, w_h)
+    V <- cbind(V, v_h)
+    b <- append(b, b_h)
+
+  }
+  
+  W_star <- W %*% matrix.inverse(t(V) %*% W)
+  b_star <- (W_star) %*% (b)
+
+  final_matrix[1:(length(x_coef)), k] <- b_star
+
+}
+
+colnames(final_matrix) <- c('C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9')
+rownames(final_matrix) <- c('engine', 'cyl', 'hp', 'city_mpg', 'hwy_mpg', 'weight', 'wheel', 'length', 'width')
+final_matrix
+
+
+```
+
+## 7.2) Path graph of coefficients
+```{r}
+
+final_df <- as.data.frame(t(final_matrix))
+final_df$Components <- 1:9
+
+melted_df <- melt(final_df ,  id.vars = 'Components', variable.name = 'Predictor')
+ggplot(melted_df, aes(Components,value)) + geom_line(aes(colour = Predictor))
+
+
+```
+
+## ***************************** COMMENT ON PATTERN ***************************************
+It is notable to see that the trends in PLSR associated with the coefficients of the original predictor variables are **almost identical** to those from PCR. This is expected since the basic premise and principles on which these regression methods are based on are the same - error minimisation and OLS.
+
+
+
